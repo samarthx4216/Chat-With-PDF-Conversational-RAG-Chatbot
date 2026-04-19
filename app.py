@@ -1,6 +1,7 @@
 ## RAG Q&A Conversation With PDF Including Chat History
 import streamlit as st
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains import create_retrieval_chain
+from langchain_community.chains.history_aware_retriever import create_history_aware_retriever
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -15,7 +16,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-os.environ['HF_TOKEN'] = os.getenv("HF_TOKEN")
+os.environ['HF_TOKEN'] = os.getenv("HF_TOKEN", "")
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 st.set_page_config(page_title="RAG PDF Chat", layout="centered")
