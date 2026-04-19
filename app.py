@@ -1,8 +1,7 @@
 ## RAG Q&A Conversation With PDF Including Chat History
 import streamlit as st
-from langchain_core.runnables import RunnablePassthrough
-from langchain_community.chains.history_aware_retriever import create_history_aware_retriever
-from langchain_core.output_parsers import StrOutputParser
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_chroma import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -12,7 +11,6 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.documents import Document
 import os
 from dotenv import load_dotenv
 
@@ -43,6 +41,7 @@ if uploaded_file:
     with open(temppdf, "wb") as f:
         f.write(uploaded_file.getvalue())
 
+    #  Loading state — PDF processing
     with st.spinner("Reading PDF pages..."):
         loader = PyPDFLoader(temppdf)
         documents = loader.load()
@@ -87,32 +86,22 @@ if uploaded_file:
         ("human", "{input}"),
     ])
 
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
     def get_session_history(session: str) -> BaseChatMessageHistory:
         if session not in st.session_state.store:
             st.session_state.store[session] = ChatMessageHistory()
         return st.session_state.store[session]
 
-    rag_chain = (
-        {
-            "context": history_aware_retriever | format_docs,
-            "input": RunnablePassthrough(),
-            "chat_history": RunnablePassthrough(),
-        }
-        | qa_prompt
-        | llm
-        | StrOutputParser()
-    )
-
     conversational_rag_chain = RunnableWithMessageHistory(
-        rag_chain,
-        get_session_history,
+        rag_chain, get_session_history,
         input_messages_key="input",
         history_messages_key="chat_history",
+        output_messages_key="answer"
     )
 
+    #  Chat history display
     st.divider()
     history = get_session_history(session_id)
     for msg in history.messages:
@@ -120,15 +109,16 @@ if uploaded_file:
         with st.chat_message(role):
             st.write(msg.content)
 
+    #  Chat input
     user_input = st.chat_input("Ask a question about your PDF...")
     if user_input:
         with st.chat_message("user"):
             st.write(user_input)
 
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+            with st.spinner("Thinking..."):  
                 response = conversational_rag_chain.invoke(
                     {"input": user_input},
                     config={"configurable": {"session_id": session_id}},
                 )
-            st.write(response)
+            st.write(response['answer'])
